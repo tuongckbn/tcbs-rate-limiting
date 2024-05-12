@@ -63,7 +63,7 @@ return {
     },
   },
   entity_checks = {
-    { at_least_one_of = { "config.second", "config.minute", "config.hour", "config.day", "config.month", "config.year" } },
+    { at_least_one_of = { "config.whitelist_ips", "config.second", "config.minute", "config.hour", "config.day", "config.month", "config.year" } },
     { conditional = {
       if_field = "config.policy", if_match = { eq = "redis" },
       then_field = "config.redis_host", then_match = { required = true },

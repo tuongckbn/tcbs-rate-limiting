@@ -1,6 +1,7 @@
 -- Copyright (C) Kong Inc.
 local timestamp = require "kong.tools.timestamp"
 local policies = require "kong.plugins.rate-limiting.policies"
+local ipmatcher = require "resty.ipmatcher"
 
 
 local kong = kong
@@ -49,21 +50,46 @@ local RateLimitingHandler = {}
 RateLimitingHandler.PRIORITY = 901
 RateLimitingHandler.VERSION = "2.2.1"
 
--- tmp: get_client_ip
--- local function get_client_ip()
---   local headers = ngx.req.get_headers()
---   return headers["X-Forwarded-For"] or ngx.var.remote_addr
--- end
 
--- local function is_ip_whitelisted(conf)
---   local client_ip = get_client_ip()
---   return iputils.ip_in_cidrs(client_ip, conf.whitelist_ips)
--- end
+local function get_list_ips(forwarded_for_header)
+  local ips = {}
+    for ip in forwarded_for_header:gmatch("[^,%s]+") do
+        table.insert(ips, ip)
+    end
+
+  return ips
+end
+
+local function ip_to_binary(ip)
+  local binary_ip = ""
+  for octet in ip:gmatch("(%d+)") do
+    binary_ip = binary_ip .. string.char(tonumber(octet))
+  end
+
+  return binary_ip
+end
+
+
+local function get_client_ip()
+  local headers = ngx.req.get_headers()
+  local str_xff = headers["x-forwarded-for"] or ngx.var.binary_remote_addr
+  kong.log.err("tuongncn str_xff=", str_xff)
+  local arr_ips = get_list_ips(str_xff)
+  if not arr_ips then
+    return kong.response.error(403, "Cannot identify the client IP address, unix domain sockets are not supported.")
+  end
+
+  kong.log.err("tuongncn client_ip=",arr_ips[#arr_ips-2])
+  local client_ip = ip_to_binary(arr_ips[#arr_ips-2])
+
+  return client_ip
+end
+
 
 local function match_bin(list, binary_remote_addr)
   local ip, err = ipmatcher.new(list)
   if err then
-    return error("failed to create a new ipmatcher instance: " .. err)
+    return error("failed to create a new ipmatcher instance (ip_whitelist): " .. err)
   end
 
   local is_match
@@ -75,14 +101,8 @@ local function match_bin(list, binary_remote_addr)
   return is_match
 end
 
-local function get_identifier(conf)
-  if conf.whitelist_ips and #conf.whitelist_ips > 0 then
-    local whitelistCheck = match_bin(conf.whitelist_ips, binary_remote_addr)
-    if whitelistCheck then
-      return 
-    end
-  end
 
+local function get_identifier(conf)
   local identifier
 
   if conf.limit_by == "service" then
@@ -149,6 +169,18 @@ end
 
 
 function RateLimitingHandler:access(conf)
+  kong.log.err("RateLimitingHandler: ", "start")
+  local binary_remote_addr = get_client_ip()
+  if conf.whitelist_ips and #conf.whitelist_ips > 0 then
+    kong.log.err("conf.whitelist_ips: ", conf.whitelist_ips)
+    local whitelistCheck = match_bin(conf.whitelist_ips, binary_remote_addr)
+    kong.log.err("whitelistCheck: ", whitelistCheck)
+    if whitelistCheck then
+      return
+    end
+
+  end
+
   local current_timestamp = time() * 1000
 
   -- Consumer is identified by ip address or authenticated_credential id
