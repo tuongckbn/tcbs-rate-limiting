@@ -1,4 +1,5 @@
 #Build & run
+
 run kong-gateway
 docker run -d --name kong-database \
  --network=kong-net \
@@ -6,14 +7,14 @@ docker run -d --name kong-database \
  -e "POSTGRES_USER=kong" \
  -e "POSTGRES_DB=kong" \
  -e "POSTGRES_PASSWORD=kongpass" \
- postgres:9.6
+ bitnami/postgresql:11.14.0-debian-10-r28
 
 docker run --rm --network=kong-net \
 -e "KONG_DATABASE=postgres" \
 -e "KONG_PG_HOST=kong-database" \
 -e "KONG_PG_PASSWORD=kongpass" \
 -e "KONG_PASSWORD=test" \
-kong/kong-gateway:2.6.1.0-alpine kong migrations bootstrap
+kong/kong-gateway:2.8-ubuntu kong migrations bootstrap
 
 
 docker run -d --name kong-gateway \
@@ -39,7 +40,7 @@ docker run -d --name kong-gateway \
 -p 8445:8445 \
 -p 8003:8003 \
 -p 8004:8004 \
-kong/kong-gateway:2.3.3.0-alpine
+kong/kong-gateway:2.8-ubuntu
 
 
 #Test
